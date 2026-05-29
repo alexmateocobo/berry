@@ -1,0 +1,11 @@
+.env
+session.json
+*.pyc
+__pycache__/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+output/
+*.md.output
