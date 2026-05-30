@@ -23,8 +23,10 @@ MAX_EVENTS = int(os.getenv("MAX_EVENTS", "20"))
 
 
 def _slug_from_url(url: str) -> str:
-    match = re.search(r"/events/([^/?#]+)", url)
-    return match.group(1) if match else re.sub(r"[^\w-]", "-", url)[-60:]
+    from urllib.parse import urlparse
+    parts = [p for p in urlparse(url or "").path.split("/") if p]
+    raw = parts[-1] if parts else url or "event"
+    return re.sub(r"[^\w-]", "-", raw)[:60] or "event"
 
 
 async def main() -> None:

@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -34,9 +35,9 @@ SOURCES = [
 
 
 def _slug(url: str) -> str:
-    match = re.search(r"//[^/]+/(?:events?/)?([^/?#]+)", url or "")
-    slug = match.group(1) if match else re.sub(r"[^\w-]", "-", url or "")
-    return slug[:60] or "event"
+    parts = [p for p in urlparse(url or "").path.split("/") if p]
+    raw = parts[-1] if parts else url or "event"
+    return re.sub(r"[^\w-]", "-", raw)[:60] or "event"
 
 
 async def _persist(events, label):
