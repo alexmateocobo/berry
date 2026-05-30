@@ -9,3 +9,8 @@ build/
 .mypy_cache/
 output/
 *.md.output
+output.md
+events.db
+events.db-shm
+events.db-wal
+images/
