@@ -1,6 +1,6 @@
-"""scraper — async event scraper for rausgegangen.de."""
+"""scraper — async event scraper for rausgegangen.de, Resident Advisor, and Luma."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .callbacks import (
     ConsoleCallback,
@@ -28,7 +28,11 @@ from .core.exceptions import (
 )
 from .formatters.markdown import format_event_to_markdown
 from .models.event import Event, Venue
-from .scrapers.event import EventScraper
+from .scrapers.event import EventScraper  # backward compat
+from .scrapers.factory import get_scraper
+from .scrapers.luma import LumaScraper
+from .scrapers.ra import ResidentAdvisorScraper
+from .scrapers.rausgegangen import RausgegangenScraper
 
 __all__ = [
     # Browser
@@ -48,7 +52,11 @@ __all__ = [
     "NetworkError",
     "ScrapingError",
     # Scrapers
-    "EventScraper",
+    "RausgegangenScraper",
+    "LumaScraper",
+    "ResidentAdvisorScraper",
+    "get_scraper",
+    "EventScraper",  # backward compat
     # Models
     "Event",
     "Venue",

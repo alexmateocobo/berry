@@ -1,13 +1,12 @@
 import pytest
 
-from scraper import EventScraper, SilentCallback
+from scraper import RausgegangenScraper, SilentCallback
 from scraper.models.event import Event, Venue
 
 
 # ------------------------------------------------------------------ #
 # Unit tests — no browser required
 # ------------------------------------------------------------------ #
-
 
 @pytest.mark.unit
 def test_event_model_defaults():
@@ -38,15 +37,18 @@ def test_event_to_dict():
 
 
 @pytest.mark.unit
-def test_event_url_validation():
-    with pytest.raises(Exception):
-        Event(url="https://example.com/not-rausgegangen")
+def test_event_url_any_domain():
+    # URL validator removed — any URL is valid
+    event = Event(url="https://ra.co/events/12345")
+    assert event.url == "https://ra.co/events/12345"
+    event2 = Event(url="https://lu.ma/abc123")
+    assert event2.url == "https://lu.ma/abc123"
 
 
 @pytest.mark.unit
-def test_event_url_valid():
-    event = Event(url="https://rausgegangen.de/en/events/jazz-night/")
-    assert event.url is not None
+def test_event_source_field():
+    event = Event(title="Test", source="ra")
+    assert event.source == "ra"
 
 
 @pytest.mark.unit
@@ -63,14 +65,13 @@ def test_event_repr():
 
 
 # ------------------------------------------------------------------ #
-# Integration tests — require live session
+# Integration tests — require live browser
 # ------------------------------------------------------------------ #
-
 
 @pytest.mark.integration
 @pytest.mark.slow
-async def test_scrape_listing_page(browser_with_session, silent_callback):
-    scraper = EventScraper(browser_with_session.page, callback=silent_callback)
+async def test_scrape_listing_page(browser, silent_callback):
+    scraper = RausgegangenScraper(browser.page, callback=silent_callback)
     events = await scraper.scrape_listing(
         "https://rausgegangen.de/en/muenchen/",
         max_events=3,
@@ -78,5 +79,5 @@ async def test_scrape_listing_page(browser_with_session, silent_callback):
     assert len(events) > 0
     for event in events:
         assert isinstance(event, Event)
-        # At minimum, each event should have a URL
         assert event.url is not None
+        assert event.source == "rausgegangen"

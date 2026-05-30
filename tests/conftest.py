@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 import pytest
@@ -6,26 +5,20 @@ import pytest
 from scraper import BrowserManager, SilentCallback
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
+# Function-scoped browser avoids asyncio/subprocess lifecycle issues in Python 3.13
+@pytest.fixture
 async def browser():
     async with BrowserManager(headless=True) as bm:
         yield bm
 
 
-@pytest.fixture(scope="session")
-async def browser_with_session(browser):
+@pytest.fixture
+async def browser_with_session():
     session_file = os.getenv("SESSION_FILE", "session.json")
     if not os.path.exists(session_file):
         pytest.skip("No session file — run samples/create_session.py first")
-    await browser.load_session(session_file)
-    yield browser
+    async with BrowserManager(headless=True, session_file=session_file) as bm:
+        yield bm
 
 
 @pytest.fixture
@@ -35,6 +28,4 @@ def silent_callback():
 
 @pytest.fixture
 def test_event_urls():
-    return [
-        "https://rausgegangen.de/en/muenchen/",
-    ]
+    return ["https://rausgegangen.de/en/muenchen/"]

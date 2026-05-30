@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class Venue(BaseModel):
@@ -30,13 +30,7 @@ class Event(BaseModel):
     is_free: Optional[bool] = None
     image_url: Optional[str] = None
     organizer: Optional[str] = None
-
-    @field_validator("url")
-    @classmethod
-    def validate_url(cls, v: Optional[str]) -> Optional[str]:
-        if v and "rausgegangen.de" not in v:
-            raise ValueError("URL must be from rausgegangen.de")
-        return v
+    source: Optional[str] = None  # "rausgegangen", "luma", "ra"
 
     @property
     def display_date(self) -> Optional[str]:

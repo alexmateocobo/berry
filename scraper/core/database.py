@@ -42,6 +42,7 @@ class EventRow(Base):
     image_url: Mapped[Optional[str]] = mapped_column(Text)
     image_path: Mapped[Optional[str]] = mapped_column(Text)  # set after download
     organizer: Mapped[Optional[str]] = mapped_column(Text)
+    source: Mapped[Optional[str]] = mapped_column(Text)
     scraped_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
@@ -102,6 +103,7 @@ async def save_event(event: Event, image_path: Optional[str] = None) -> bool:
                 image_url=event.image_url,
                 image_path=image_path,
                 organizer=event.organizer,
+                source=event.source,
                 scraped_at=scraped_at,
             )
 
