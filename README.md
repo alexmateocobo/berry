@@ -1,14 +1,14 @@
 # berry
 
-Async multi-site event scraper for Munich. Scrapes [rausgegangen.de](https://rausgegangen.de/en/muenchen/), [Resident Advisor](https://ra.co/events/de/munich), and [Luma](https://lu.ma/munich) — downloads images and persists everything to a local SQLite database.
+Async multi-site event scraper for Munich. Scrapes [rausgegangen.de](https://rausgegangen.de/en/muenchen/), [Resident Advisor](https://ra.co/events/de/munich), and [Luma](https://lu.ma/munich) — downloads images to Cloudflare R2 and persists everything to a local SQLite database.
 
 ## Supported sites
 
 | Site | Method | Notes |
 |---|---|---|
-| rausgegangen.de | Browser + ld+json | DOM fallback for tags/categories |
+| rausgegangen.de | Browser + ld+json | DOM fallback for tags/categories/price |
 | Resident Advisor | httpx + GraphQL API | No browser required |
-| Luma | Browser + ld+json + DOM | DOM for address, tags, organizers |
+| Luma | Browser + ld+json + DOM | DOM for address, tags, organizers, availability |
 
 ---
 
@@ -26,6 +26,8 @@ playwright install chromium
 cp .env.example .env
 ```
 
+Edit `.env` and add your Cloudflare R2 credentials (see [Image storage](#image-storage) below).
+
 ---
 
 ## Quick start
@@ -40,7 +42,7 @@ python samples/scrape_all_and_save.py
 |---|---|---|
 | `MAX_EVENTS` | `10` | Events per site per run |
 | `DB_PATH` | `events.db` | SQLite database file |
-| `IMAGES_DIR` | `images/` | Local image directory |
+| `IMAGES_DIR` | `images/` | Local fallback directory (used when R2 is not configured) |
 
 ```bash
 MAX_EVENTS=20 python samples/scrape_all_and_save.py
@@ -64,6 +66,35 @@ Or open `events.db` in [DB Browser for SQLite](https://sqlitebrowser.org/).
 
 ---
 
+## Image storage
+
+Images are uploaded to **Cloudflare R2** when credentials are present in `.env`, and saved locally to `images/` otherwise.
+
+### Setting up R2
+
+1. Create a free [Cloudflare](https://cloudflare.com) account
+2. Go to **R2 Object Storage** → **Create bucket** (e.g. `berry-images`)
+3. Enable **Public Access** on the bucket to get a public URL
+4. Go to **Manage R2 API Tokens** → **Create API Token** → **Object Read & Write**
+5. Add to `.env`:
+
+```
+R2_ACCESS_KEY_ID=your_access_key_id
+R2_SECRET_ACCESS_KEY=your_secret_access_key
+```
+
+When configured, `image_path` in the DB contains a public URL:
+```
+https://pub-xxxx.r2.dev/mahala-disko-7.jpg
+```
+
+When not configured, `image_path` contains a local path:
+```
+images/mahala-disko-7.jpg
+```
+
+---
+
 ## Project structure
 
 ```
@@ -76,7 +107,8 @@ berry/
 │   │   ├── browser.py          # BrowserManager context manager
 │   │   ├── database.py         # SQLAlchemy async engine, init_db(), save_event()
 │   │   ├── exceptions.py       # Typed exception hierarchy
-│   │   ├── images.py           # Async image downloader (httpx)
+│   │   ├── images.py           # Async image downloader — local fallback
+│   │   ├── r2.py               # Cloudflare R2 uploader (boto3)
 │   │   └── utils.py            # Retry, scroll, element helpers
 │   ├── models/
 │   │   └── event.py            # Event + Venue Pydantic models
@@ -92,7 +124,7 @@ berry/
 │   ├── scrape_event.py         # Single event → output.md
 │   ├── scrape_multiple.py      # Listing → one .md per event
 │   ├── scrape_and_save.py      # Single-site scrape → DB
-│   ├── scrape_all_and_save.py  # All three sites → DB
+│   ├── scrape_all_and_save.py  # All three sites → DB + R2
 │   └── create_session.py       # Interactive login → session.json
 ├── tests/
 │   ├── conftest.py
@@ -121,23 +153,24 @@ berry/
 | Scrapers | `scrapers/` | Site-specific extraction logic |
 | Factory | `scrapers/factory.py` | Dispatch scraper by URL domain |
 | Models | `models/event.py` | Pydantic data structures |
-| Persistence | `core/database.py`, `core/images.py` | SQLite + image download |
+| Persistence | `core/database.py` | SQLite storage, upsert by URL |
+| Images | `core/images.py`, `core/r2.py` | Local download or R2 upload |
 | Output | `formatters/markdown.py` | Serialise events to Markdown |
 | Callbacks | `callbacks.py` | Decouple progress reporting |
 
 ### Extraction strategy per site
 
-**rausgegangen.de** — ld+json primary (title, dates, venue, price, image, description). DOM for tags and categories (`a.text-pill-outline[href*="/tags/"]`).
+**rausgegangen.de** — ld+json primary (title, dates, venue, price, image, description). Handles both `Offer` and `AggregateOffer` price types; falls back to `.event-detail-sidebar` DOM when ld+json prices are null. DOM for tags (`a.text-pill-outline[href*="/tags/"]`) and categories.
 
-**Resident Advisor** — GraphQL API (`https://ra.co/graphql`). No browser needed. `content` → description, `promoters[0].name` → organizer, `artists` → tags. Listing URL parsed for country/city to look up the area ID dynamically.
+**Resident Advisor** — GraphQL API (`https://ra.co/graphql`). No browser needed. `content` → description, `promoters[0].name` → organizer (falls back to `admin.name`), `artists` → tags, `venue.area.name` → city. Listing URL parsed for country/city to look up the area ID dynamically.
 
-**Luma** — ld+json for title, dates, price, image, description. DOM supplements: venue address from `.content-card` Location section (ld+json has venue display name in `streetAddress`), tags from `[class*="category"]`, organizers from "Hosted By" section (skips "Presented by" calendar owner).
+**Luma** — ld+json for title, dates, price, image, description, `addressLocality` → city. DOM supplements: venue address from `.content-card` Location section, tags from `[class*="category"]`, organizers from "Hosted By" section (skips "Presented by"), `spots_remaining` from "N Spots Remaining" text, `registration_required` from "Approval Required" text.
 
 ### Data flow
 
 ```
 ResidentAdvisorScraper          (no browser)
-    └── GraphQL API → List[Event] → save_event() → events.db
+    └── GraphQL API → List[Event]
 
 BrowserManager
     ├── RausgegangenScraper
@@ -146,8 +179,10 @@ BrowserManager
             └── scrape_listing() → ItemList URLs → per-event scrape() → List[Event]
 
 For each event:
-    download_image(image_url, slug) → images/<slug>.ext
-    save_event(event, image_path)   → events.db (upsert by URL)
+    R2 configured?
+        yes → upload_image(url, slug) → R2 public URL → image_path
+        no  → download_image(url, slug) → images/<slug>.ext → image_path
+    save_event(event, image_path) → events.db (upsert by URL)
 ```
 
 ### Database schema
@@ -166,7 +201,7 @@ Single `events` table, flat layout:
 | `start_time` | TEXT | `22:00` |
 | `end_time` | TEXT | |
 | `venue_name` | TEXT | |
-| `venue_address` | TEXT | Full street address |
+| `venue_address` | TEXT | Full street address with postal code |
 | `venue_city` | TEXT | |
 | `categories` | TEXT | JSON array |
 | `tags` | TEXT | JSON array |
@@ -174,8 +209,8 @@ Single `events` table, flat layout:
 | `is_free` | INTEGER | 0/1 |
 | `spots_remaining` | INTEGER | Luma only — null if unlimited/unknown |
 | `registration_required` | INTEGER | Luma only — 1 if host approval needed |
-| `image_url` | TEXT | Remote URL |
-| `image_path` | TEXT | `images/<slug>.ext` |
+| `image_url` | TEXT | Original remote URL |
+| `image_path` | TEXT | R2 public URL or local `images/<slug>.ext` |
 | `organizer` | TEXT | |
 | `scraped_at` | TEXT | ISO timestamp |
 
@@ -214,9 +249,6 @@ pytest tests/test_luma.py tests/test_event.py -m integration
 ### Performance
 - **Browser-based scrapers are sequential** — Luma and rausgegangen visit each event page one at a time in a single browser context. Parallelism would require multiple browser instances.
 - **No incremental scraping** — every run re-scrapes the full listing from the top. There is no mechanism to fetch only events added since the last run.
-
-### Storage
-- **Images are stored locally only** — the `images/` directory is gitignored. There is no cloud storage or CDN integration; images must be managed manually when deploying.
 
 ---
 
