@@ -29,6 +29,7 @@ _EVENT_FIELDS = """
     venue { name address country { name } }
     artists { name }
     promoters { name contentUrl }
+    admin { name username }
 """
 
 _LISTINGS_QUERY = """
@@ -218,9 +219,13 @@ class ResidentAdvisorScraper:
         elif cost == "" or cost is None:
             is_free = None
 
-        # Organizer: first promoter name
+        # Organizer: first promoter name, fall back to event admin when promoters is empty
         promoters = raw.get("promoters") or []
-        organizer = promoters[0]["name"] if promoters and promoters[0].get("name") else None
+        if promoters and promoters[0].get("name"):
+            organizer = promoters[0]["name"]
+        else:
+            admin = raw.get("admin") or {}
+            organizer = admin.get("name") or admin.get("username") or None
 
         return Event(
             url=url,
