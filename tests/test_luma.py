@@ -71,6 +71,8 @@ def test_sd_price_missing_offers():
 # Integration tests — require live browser
 # ------------------------------------------------------------------ #
 
+_MUNICH = {"munich", "münchen"}
+
 @pytest.mark.integration
 @pytest.mark.slow
 async def test_scrape_listing_munich(browser, silent_callback):
@@ -82,6 +84,9 @@ async def test_scrape_listing_munich(browser, silent_callback):
         assert event.title is not None
         assert event.source == "luma"
         assert event.url is not None
+        if event.venue:
+            assert (event.venue.city or "").lower() in _MUNICH, \
+                f"Expected Munich city, got {event.venue.city!r} for {event.title!r}"
 
 
 @pytest.mark.integration

@@ -133,25 +133,24 @@ class LumaScraper(BaseScraper):
         """
         Luma's ld+json puts the venue display name in streetAddress instead of the real
         street address. Scrape the actual address from the Location card in the DOM.
+        City comes from addressLocality in ld+json — more reliable than DOM parsing.
         """
-        # Venue name from ld+json
         loc = sd.get("location") or {}
         venue_name = loc.get("name") if isinstance(loc, dict) else None
 
-        # Full address from DOM Location card
-        address, city = await self._get_address_from_dom()
+        addr_obj = loc.get("address") or {}
+        city = addr_obj.get("addressLocality") if isinstance(addr_obj, dict) else None
+
+        address = await self._get_address_from_dom()
 
         if venue_name or address:
             return Venue(name=venue_name, address=address, city=city)
         return None
 
-    async def _get_address_from_dom(self) -> tuple:
+    async def _get_address_from_dom(self) -> Optional[str]:
         """
-        The Location card at the bottom of the page shows:
-          Location
-          <Venue Name>
-          <Street Address, Postal Code City, Country>
-        Returns (address_line, city).
+        The Location card shows: Location / <Venue Name> / <Full Address>
+        Returns the full address string only — city is taken from ld+json addressLocality.
         """
         try:
             result = await self.page.evaluate("""
@@ -164,18 +163,10 @@ class LumaScraper(BaseScraper):
                     return lines[2] || null;
                 }
             """)
-            if result:
-                # "Baaderstraße 1, 80469 München, Germany"
-                parts = [p.strip() for p in result.split(",")]
-                city = parts[1].strip() if len(parts) >= 2 else None
-                # Remove postal code prefix from city (e.g. "80469 München" → "München")
-                if city:
-                    city_parts = city.split()
-                    city = city_parts[-1] if len(city_parts) > 1 and city_parts[0].isdigit() else city
-                return result, city
+            return result or None
         except Exception as e:
             logger.debug("Could not get address from DOM: %s", e)
-        return None, None
+        return None
 
     async def _get_tags(self) -> List[str]:
         """Tags/categories are rendered as [class*='category'] pill elements."""

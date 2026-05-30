@@ -44,7 +44,7 @@ def test_event_from_raw_basic():
         "contentUrl": "/events/2355312",
         "cost": "55",
         "images": [{"filename": "https://images.ra.co/test.jpg"}],
-        "venue": {"name": "BLITZ", "address": "Museumsinsel 1, München", "country": {"name": "Germany"}},
+        "venue": {"name": "BLITZ", "address": "Museumsinsel 1, München", "area": {"name": "Munich"}, "country": {"name": "Germany"}},
         "artists": [{"name": "Solomun"}, {"name": "Fedele"}],
     }
     event = s._event_from_raw(raw)
@@ -53,6 +53,7 @@ def test_event_from_raw_basic():
     assert event.start_time == "23:00"
     assert event.end_time == "06:00"
     assert event.venue.name == "BLITZ"
+    assert event.venue.city == "Munich"
     assert "Solomun" in event.tags
     assert event.price == "55"
     assert event.image_url == "https://images.ra.co/test.jpg"
@@ -98,6 +99,8 @@ async def test_lookup_area_id_munich():
     assert area_id == 151
 
 
+_MUNICH = {"munich", "münchen"}
+
 @pytest.mark.integration
 async def test_scrape_listing_munich():
     s = RAScraper(callback=SilentCallback())
@@ -108,6 +111,9 @@ async def test_scrape_listing_munich():
         assert event.title is not None
         assert event.source == "ra"
         assert event.url is not None and "ra.co" in event.url
+        assert event.venue is not None
+        assert (event.venue.city or "").lower() in _MUNICH, \
+            f"Expected Munich city, got {event.venue.city!r} for {event.title!r}"
 
 
 @pytest.mark.integration

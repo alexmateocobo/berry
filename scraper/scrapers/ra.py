@@ -26,7 +26,7 @@ _HEADERS = {
 _EVENT_FIELDS = """
     id title date startTime endTime contentUrl cost content
     images { filename }
-    venue { name address country { name } }
+    venue { name address area { name } country { name } }
     artists { name }
     promoters { name contentUrl }
     admin { name username }
@@ -199,7 +199,7 @@ class ResidentAdvisorScraper:
             venue = Venue(
                 name=v.get("name"),
                 address=v.get("address") or None,
-                city=v.get("country", {}).get("name"),
+                city=(v.get("area") or {}).get("name") or (v.get("country") or {}).get("name"),
             )
 
         # Artists → tags
