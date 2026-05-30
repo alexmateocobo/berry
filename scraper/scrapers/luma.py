@@ -16,7 +16,7 @@ class LumaScraper(BaseScraper):
     """Scrapes event pages and city listing pages from lu.ma / luma.com."""
 
     async def scrape(self, url: str) -> Event:
-        """Scrape a single Luma event page."""
+        """Scrape a single Luma event page (full data including description, tags, organizers)."""
         await self.callback.on_start(url)
         try:
             await self.navigate_and_wait(url)
@@ -26,7 +26,24 @@ class LumaScraper(BaseScraper):
             if sd is None:
                 raise PageNotFoundError(f"No Event ld+json found on {url}")
 
-            event = self._event_from_sd(sd, url)
+            event = Event(
+                url=url,
+                source="luma",
+                title=sd.get("name"),
+                description=sd.get("description"),
+                start_date=self._sd_date(sd, "startDate"),
+                end_date=self._sd_date(sd, "endDate"),
+                start_time=self._sd_time(sd, "startDate"),
+                end_time=self._sd_time(sd, "endDate"),
+                venue=await self._get_venue(sd),
+                categories=await self._get_tags(),
+                tags=await self._get_tags(),
+                price=self._sd_price(sd),
+                is_free=self._sd_is_free(sd),
+                image_url=self._sd_image(sd),
+                organizer=await self._get_organizer(),
+            )
+
             await self.callback.on_complete(event)
             return event
 
@@ -41,28 +58,27 @@ class LumaScraper(BaseScraper):
     ) -> List[Event]:
         """
         Scrape a Luma city/calendar page.
-        Extracts all events directly from the ItemList ld+json — no per-event navigation needed.
+        Collects event URLs from the ItemList ld+json, then scrapes each individually
+        so that description, tags, and organizers are fully populated.
         """
         await self.callback.on_start(listing_url)
         try:
             await self.navigate_and_wait(listing_url)
             await asyncio.sleep(2)
 
-            items = await self._get_item_list()
-            if max_events:
-                items = items[:max_events]
+            urls = await self._get_event_urls_from_listing(max_events)
+            logger.info("Found %d event URLs on Luma listing page", len(urls))
 
             events: List[Event] = []
-            for i, item_sd in enumerate(items):
+            for i, url in enumerate(urls):
                 await self.callback.on_progress(
-                    f"Parsing event {i + 1}/{len(items)}", i + 1, len(items)
+                    f"Scraping event {i + 1}/{len(urls)}", i + 1, len(urls)
                 )
                 try:
-                    url = item_sd.get("url") or item_sd.get("@id", "")
-                    event = self._event_from_sd(item_sd, url)
+                    event = await self.scrape(url)
                     events.append(event)
                 except Exception as e:
-                    logger.warning("Failed to parse Luma listing item: %s", e)
+                    logger.warning("Failed to scrape Luma event %s: %s", url, e)
 
             await self.callback.on_complete(events)
             return events
@@ -89,7 +105,8 @@ class LumaScraper(BaseScraper):
             logger.debug("ld+json parse failed: %s", e)
         return None
 
-    async def _get_item_list(self) -> List[Dict[str, Any]]:
+    async def _get_event_urls_from_listing(self, max_events: Optional[int]) -> List[str]:
+        """Extract event URLs from the ItemList ld+json on a listing page."""
         try:
             blocks: List[Any] = await self.page.evaluate(
                 """() => [...document.querySelectorAll('script[type="application/ld+json"]')]
@@ -98,35 +115,114 @@ class LumaScraper(BaseScraper):
             )
             for block in blocks:
                 if isinstance(block, dict) and block.get("@type") == "ItemList":
-                    return [
-                        el["item"]
+                    urls = [
+                        el["item"]["url"]
                         for el in block.get("itemListElement", [])
-                        if isinstance(el.get("item"), dict)
+                        if isinstance(el.get("item"), dict) and el["item"].get("url")
                     ]
+                    return urls[:max_events] if max_events else urls
         except Exception as e:
             logger.debug("ItemList parse failed: %s", e)
         return []
 
     # ------------------------------------------------------------------ #
-    # Model construction from ld+json
+    # DOM scrapers (fields not reliably in ld+json)
     # ------------------------------------------------------------------ #
 
-    def _event_from_sd(self, sd: Dict[str, Any], url: str) -> Event:
-        return Event(
-            url=url,
-            source="luma",
-            title=sd.get("name"),
-            description=sd.get("description"),
-            start_date=self._sd_date(sd, "startDate"),
-            end_date=self._sd_date(sd, "endDate"),
-            start_time=self._sd_time(sd, "startDate"),
-            end_time=self._sd_time(sd, "endDate"),
-            venue=self._sd_venue(sd),
-            price=self._sd_price(sd),
-            is_free=self._sd_is_free(sd),
-            image_url=self._sd_image(sd),
-            organizer=self._sd_organizer(sd),
-        )
+    async def _get_venue(self, sd: Dict[str, Any]) -> Optional[Venue]:
+        """
+        Luma's ld+json puts the venue display name in streetAddress instead of the real
+        street address. Scrape the actual address from the Location card in the DOM.
+        """
+        # Venue name from ld+json
+        loc = sd.get("location") or {}
+        venue_name = loc.get("name") if isinstance(loc, dict) else None
+
+        # Full address from DOM Location card
+        address, city = await self._get_address_from_dom()
+
+        if venue_name or address:
+            return Venue(name=venue_name, address=address, city=city)
+        return None
+
+    async def _get_address_from_dom(self) -> tuple:
+        """
+        The Location card at the bottom of the page shows:
+          Location
+          <Venue Name>
+          <Street Address, Postal Code City, Country>
+        Returns (address_line, city).
+        """
+        try:
+            result = await self.page.evaluate("""
+                () => {
+                    const card = [...document.querySelectorAll('[class*="content-card"]')]
+                        .find(el => el.innerText.trim().startsWith('Location'));
+                    if (!card) return null;
+                    const lines = card.innerText.trim().split('\\n').map(l => l.trim()).filter(Boolean);
+                    // lines[0] = "Location", lines[1] = venue name, lines[2] = full address
+                    return lines[2] || null;
+                }
+            """)
+            if result:
+                # "Baaderstraße 1, 80469 München, Germany"
+                parts = [p.strip() for p in result.split(",")]
+                city = parts[1].strip() if len(parts) >= 2 else None
+                # Remove postal code prefix from city (e.g. "80469 München" → "München")
+                if city:
+                    city_parts = city.split()
+                    city = city_parts[-1] if len(city_parts) > 1 and city_parts[0].isdigit() else city
+                return result, city
+        except Exception as e:
+            logger.debug("Could not get address from DOM: %s", e)
+        return None, None
+
+    async def _get_tags(self) -> List[str]:
+        """Tags/categories are rendered as [class*='category'] pill elements."""
+        try:
+            tags = await self.page.evaluate("""
+                () => [...new Set(
+                    [...document.querySelectorAll('[class*="category"]')]
+                        .map(el => el.innerText.trim())
+                        .filter(t => t.length > 0 && t.length < 50)
+                )]
+            """)
+            return tags or []
+        except Exception as e:
+            logger.debug("Could not get tags: %s", e)
+        return []
+
+    async def _get_organizer(self) -> Optional[str]:
+        """
+        Luma distinguishes 'Presented by' (calendar owner) from 'Hosted By' (actual hosts).
+        We want the 'Hosted By' names, joined with ', '.
+        """
+        try:
+            names = await self.page.evaluate("""
+                () => {
+                    const hostedByLabel = [...document.querySelectorAll('*')]
+                        .find(el => el.children.length === 0 && el.innerText?.trim() === 'Hosted By');
+                    if (!hostedByLabel) return [];
+                    // Walk up to find the container, then grab host name links
+                    let container = hostedByLabel;
+                    for (let i = 0; i < 5; i++) {
+                        container = container.parentElement;
+                        if (!container) break;
+                        const links = [...container.querySelectorAll('a[href*="/user/"], a[href*="/calendar/"]')]
+                            .map(a => a.innerText.trim()).filter(Boolean);
+                        if (links.length > 0) return links;
+                    }
+                    return [];
+                }
+            """)
+            return ", ".join(names) if names else None
+        except Exception as e:
+            logger.debug("Could not get organizer: %s", e)
+        return None
+
+    # ------------------------------------------------------------------ #
+    # ld+json field parsers
+    # ------------------------------------------------------------------ #
 
     def _sd_date(self, sd: Dict, field: str) -> Optional[str]:
         raw = sd.get(field, "")
@@ -138,21 +234,8 @@ class LumaScraper(BaseScraper):
             return raw.split("T")[1][:5]
         return None
 
-    def _sd_venue(self, sd: Dict) -> Optional[Venue]:
-        loc = sd.get("location")
-        if not isinstance(loc, dict):
-            return None
-        addr = loc.get("address") or {}
-        name = loc.get("name")
-        street = addr.get("streetAddress") if isinstance(addr, dict) else None
-        city = addr.get("addressLocality") if isinstance(addr, dict) else None
-        if name or street:
-            return Venue(name=name, address=street, city=city)
-        return None
-
     def _sd_price(self, sd: Dict) -> Optional[str]:
         offers = sd.get("offers")
-        # Luma offers is a list; take the first
         if isinstance(offers, list):
             offers = offers[0] if offers else None
         if not isinstance(offers, dict):
@@ -187,14 +270,4 @@ class LumaScraper(BaseScraper):
             return images[0]
         if isinstance(images, str):
             return images
-        return None
-
-    def _sd_organizer(self, sd: Dict) -> Optional[str]:
-        org = sd.get("organizer")
-        if isinstance(org, list) and org:
-            org = org[0]
-        if isinstance(org, dict):
-            return org.get("name")
-        if isinstance(org, str):
-            return org
         return None

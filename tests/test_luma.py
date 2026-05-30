@@ -26,19 +26,11 @@ def test_sd_time():
 
 
 @pytest.mark.unit
-def test_sd_venue():
+def test_sd_image_list():
     class FakePage: pass
     s = LS(FakePage())
-    sd = {
-        "location": {
-            "@type": "Place",
-            "name": "Terra",
-            "address": {"streetAddress": "Maximilianstr. 1", "addressLocality": "München"},
-        }
-    }
-    venue = s._sd_venue(sd)
-    assert venue.name == "Terra"
-    assert venue.city == "München"
+    sd = {"image": ["https://images.lumacdn.com/test.png", "https://images.lumacdn.com/other.png"]}
+    assert s._sd_image(sd) == "https://images.lumacdn.com/test.png"
 
 
 @pytest.mark.unit
@@ -60,36 +52,19 @@ def test_sd_price_paid():
 
 
 @pytest.mark.unit
-def test_sd_organizer_list():
+def test_sd_date_with_offset():
     class FakePage: pass
     s = LS(FakePage())
-    sd = {"organizer": [{"@type": "Organization", "name": "Longevity Cities"}]}
-    assert s._sd_organizer(sd) == "Longevity Cities"
+    # Offset timezone marker should not bleed into the date
+    assert s._sd_date({"startDate": "2026-05-30T18:30:00.000+02:00"}, "startDate") == "2026-05-30"
 
 
 @pytest.mark.unit
-def test_event_from_sd_full():
+def test_sd_price_missing_offers():
     class FakePage: pass
     s = LS(FakePage())
-    sd = {
-        "name": "Longevity Munich Dinner",
-        "startDate": "2026-05-30T18:30:00.000+02:00",
-        "endDate": "2026-05-30T21:00:00.000+02:00",
-        "description": "Health event in Munich.",
-        "location": {"name": "Terra", "address": {"streetAddress": "Terra St", "addressLocality": "München"}},
-        "image": ["https://images.lumacdn.com/test.png"],
-        "offers": [{"price": 0, "priceCurrency": "usd"}],
-        "organizer": [{"name": "Longevity Cities"}],
-    }
-    event = s._event_from_sd(sd, "https://lu.ma/test123")
-    assert event.title == "Longevity Munich Dinner"
-    assert event.start_date == "2026-05-30"
-    assert event.start_time == "18:30"
-    assert event.end_time == "21:00"
-    assert event.venue.name == "Terra"
-    assert event.is_free is True
-    assert event.organizer == "Longevity Cities"
-    assert event.source == "luma"
+    assert s._sd_price({}) is None
+    assert s._sd_is_free({}) is None
 
 
 # ------------------------------------------------------------------ #

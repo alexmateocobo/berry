@@ -1,16 +1,14 @@
 # berry
 
-Async event scraper for [rausgegangen.de](https://rausgegangen.de/en/muenchen/) — scrapes Munich event listings, downloads images, and persists everything to a local SQLite database.
+Async multi-site event scraper for Munich. Scrapes [rausgegangen.de](https://rausgegangen.de/en/muenchen/), [Resident Advisor](https://ra.co/events/de/munich), and [Luma](https://lu.ma/munich) — downloads images and persists everything to a local SQLite database.
 
-## Features
+## Supported sites
 
-- Scrapes event detail pages: title, description, dates, times, venue, price, tags, categories, image
-- Extracts data from `ld+json` structured data (reliable, survives CSS class changes)
-- Downloads and caches event images locally
-- Persists to SQLite with upsert-by-URL deduplication
-- Async throughout (Playwright + SQLAlchemy async + httpx)
-- Markdown output formatter
-- Callback system for progress reporting (silent / console / JSON log)
+| Site | Method | Notes |
+|---|---|---|
+| rausgegangen.de | Browser + ld+json | DOM fallback for tags/categories |
+| Resident Advisor | httpx + GraphQL API | No browser required |
+| Luma | Browser + ld+json + DOM | DOM for address, tags, organizers |
 
 ---
 
@@ -23,13 +21,8 @@ git clone https://github.com/alexmateocobo/berry
 cd berry
 
 pip install -r requirements-dev.txt
-playwright install chromium
 pip install -e .
-```
-
-Copy the environment template:
-
-```bash
+playwright install chromium
 cp .env.example .env
 ```
 
@@ -37,44 +30,37 @@ cp .env.example .env
 
 ## Quick start
 
-### Scrape a single event
+### Scrape all three sites → database
 
 ```bash
-python samples/scrape_event.py
+python samples/scrape_all_and_save.py
 ```
-
-Override the target URL:
-
-```bash
-TARGET_URL="https://rausgegangen.de/en/events/mahala-disko-7/" python samples/scrape_event.py
-```
-
-### Scrape the Munich listing and save to database
-
-```bash
-python samples/scrape_and_save.py
-```
-
-Options via environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `LISTING_URL` | Munich listing | Listing page to scrape |
-| `MAX_EVENTS` | `20` | Max events to scrape per run |
-| `DB_PATH` | `events.db` | SQLite database file path |
-| `IMAGES_DIR` | `images/` | Directory for downloaded images |
+| `MAX_EVENTS` | `10` | Events per site per run |
+| `DB_PATH` | `events.db` | SQLite database file |
+| `IMAGES_DIR` | `images/` | Local image directory |
 
 ```bash
-MAX_EVENTS=50 DB_PATH=my_events.db python samples/scrape_and_save.py
+MAX_EVENTS=20 python samples/scrape_all_and_save.py
+```
+
+### Scrape a single event (any supported URL)
+
+```bash
+TARGET_URL="https://rausgegangen.de/en/events/mahala-disko-7/" python samples/scrape_event.py
+TARGET_URL="https://ra.co/events/2355312" python samples/scrape_event.py
+TARGET_URL="https://lu.ma/ftj7e5ly" python samples/scrape_event.py
 ```
 
 ### Query the database
 
 ```bash
-sqlite3 events.db "SELECT title, start_date, price FROM events;"
+sqlite3 events.db "SELECT source, title, start_date, organizer FROM events;"
 ```
 
-Or open `events.db` in [DB Browser for SQLite](https://sqlitebrowser.org/) for a visual interface.
+Or open `events.db` in [DB Browser for SQLite](https://sqlitebrowser.org/).
 
 ---
 
@@ -82,11 +68,11 @@ Or open `events.db` in [DB Browser for SQLite](https://sqlitebrowser.org/) for a
 
 ```
 berry/
-├── scraper/                    # Importable package
+├── scraper/
 │   ├── __init__.py             # Public API exports
-│   ├── callbacks.py            # Progress reporting (Silent / Console / JSONLog / Multi)
+│   ├── callbacks.py            # Silent / Console / JSONLog / Multi
 │   ├── core/
-│   │   ├── auth.py             # Login, session checks, warm-up browser
+│   │   ├── auth.py             # Login, session checks, browser warm-up
 │   │   ├── browser.py          # BrowserManager context manager
 │   │   ├── database.py         # SQLAlchemy async engine, init_db(), save_event()
 │   │   ├── exceptions.py       # Typed exception hierarchy
@@ -95,20 +81,27 @@ berry/
 │   ├── models/
 │   │   └── event.py            # Event + Venue Pydantic models
 │   ├── scrapers/
-│   │   ├── base.py             # BaseScraper with shared browser operations
-│   │   └── event.py            # EventScraper: scrape() and scrape_listing()
+│   │   ├── base.py             # BaseScraper — shared browser operations
+│   │   ├── rausgegangen.py     # RausgegangenScraper
+│   │   ├── ra.py               # ResidentAdvisorScraper (GraphQL)
+│   │   ├── luma.py             # LumaScraper
+│   │   └── factory.py          # get_scraper(url) — dispatch by domain
 │   └── formatters/
-│       └── markdown.py         # Event → Markdown formatter
+│       └── markdown.py         # Event → Markdown
 ├── samples/
-│   ├── create_session.py       # Interactive login → saves session.json
-│   ├── scrape_event.py         # Scrape a single event → output.md
-│   ├── scrape_multiple.py      # Scrape listing → one .md file per event
-│   └── scrape_and_save.py      # Scrape listing → download images → save to DB
+│   ├── scrape_event.py         # Single event → output.md
+│   ├── scrape_multiple.py      # Listing → one .md per event
+│   ├── scrape_and_save.py      # Single-site scrape → DB
+│   ├── scrape_all_and_save.py  # All three sites → DB
+│   └── create_session.py       # Interactive login → session.json
 ├── tests/
 │   ├── conftest.py
+│   ├── test_event.py           # rausgegangen + Event model
+│   ├── test_ra.py
+│   ├── test_luma.py
+│   ├── test_factory.py
 │   ├── test_auth.py
-│   ├── test_browser.py
-│   └── test_event.py
+│   └── test_browser.py
 ├── .env.example
 ├── pyproject.toml
 └── requirements.txt
@@ -125,80 +118,87 @@ berry/
 | Browser | `core/browser.py` | Playwright lifecycle, session persistence |
 | Auth | `core/auth.py` | Login, session checks, browser warm-up |
 | Utilities | `core/utils.py` | Retry decorator, scrolling, element helpers |
-| Scraper | `scrapers/base.py`, `scrapers/event.py` | Page navigation and data extraction |
+| Scrapers | `scrapers/` | Site-specific extraction logic |
+| Factory | `scrapers/factory.py` | Dispatch scraper by URL domain |
 | Models | `models/event.py` | Pydantic data structures |
-| Persistence | `core/database.py`, `core/images.py` | SQLite storage and image download |
+| Persistence | `core/database.py`, `core/images.py` | SQLite + image download |
 | Output | `formatters/markdown.py` | Serialise events to Markdown |
-| Callbacks | `callbacks.py` | Decouple progress reporting from scraping |
+| Callbacks | `callbacks.py` | Decouple progress reporting |
 
-### Extraction strategy
+### Extraction strategy per site
 
-Event data is extracted in two passes:
+**rausgegangen.de** — ld+json primary (title, dates, venue, price, image, description). DOM for tags and categories (`a.text-pill-outline[href*="/tags/"]`).
 
-1. **`ld+json` structured data** (primary) — rausgegangen.de embeds a `schema.org/Event` block on every event page. This provides title, description, ISO dates, venue, price, and image URL in a stable machine-readable format that survives CSS changes.
+**Resident Advisor** — GraphQL API (`https://ra.co/graphql`). No browser needed. `content` → description, `promoters[0].name` → organizer, `artists` → tags. Listing URL parsed for country/city to look up the area ID dynamically.
 
-2. **DOM selectors** (fallback / supplement) — tags and categories are read from `.text-pill-outline` pill links, which are not included in the structured data.
+**Luma** — ld+json for title, dates, price, image, description. DOM supplements: venue address from `.content-card` Location section (ld+json has venue display name in `streetAddress`), tags from `[class*="category"]`, organizers from "Hosted By" section (skips "Presented by" calendar owner).
 
 ### Data flow
 
 ```
+ResidentAdvisorScraper          (no browser)
+    └── GraphQL API → List[Event] → save_event() → events.db
+
 BrowserManager
-    └── EventScraper.scrape_listing(url)
-            ├── scroll listing until stable
-            ├── collect /en/events/<slug>/ links
-            └── for each URL:
-                    EventScraper.scrape(url)
-                        ├── parse ld+json → title, dates, venue, price, image_url
-                        └── DOM → tags, categories
-                    download_image(image_url, slug) → images/<slug>.jpg
-                    save_event(event, image_path)   → events.db
+    ├── RausgegangenScraper
+    │       └── scrape_listing() → per-event scrape() → List[Event]
+    └── LumaScraper
+            └── scrape_listing() → ItemList URLs → per-event scrape() → List[Event]
+
+For each event:
+    download_image(image_url, slug) → images/<slug>.ext
+    save_event(event, image_path)   → events.db (upsert by URL)
 ```
 
 ### Database schema
 
-Single `events` table, flat layout (no joins):
+Single `events` table, flat layout:
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | INTEGER PK | Auto-increment |
+| `id` | INTEGER PK | |
 | `url` | TEXT UNIQUE | Deduplication key |
+| `source` | TEXT | `rausgegangen`, `ra`, `luma` |
 | `title` | TEXT | |
 | `description` | TEXT | |
-| `start_date` | TEXT | ISO date: `2026-05-29` |
+| `start_date` | TEXT | `2026-05-29` |
 | `end_date` | TEXT | |
 | `start_time` | TEXT | `22:00` |
 | `end_time` | TEXT | |
-| `venue_name` | TEXT | Flattened from Venue |
-| `venue_address` | TEXT | |
+| `venue_name` | TEXT | |
+| `venue_address` | TEXT | Full street address |
 | `venue_city` | TEXT | |
 | `categories` | TEXT | JSON array |
 | `tags` | TEXT | JSON array |
 | `price` | TEXT | e.g. `13.32 EUR` or `Free` |
-| `is_free` | INTEGER | Boolean (0/1) |
-| `image_url` | TEXT | Original remote URL |
-| `image_path` | TEXT | Local path (`images/<slug>.jpg`) |
+| `is_free` | INTEGER | 0/1 |
+| `image_url` | TEXT | Remote URL |
+| `image_path` | TEXT | `images/<slug>.ext` |
 | `organizer` | TEXT | |
 | `scraped_at` | TEXT | ISO timestamp |
 
-WAL mode is enabled on every connection for safe concurrent reads alongside writes.
+WAL mode enabled — safe concurrent reads during writes.
 
 ---
 
 ## Running tests
 
 ```bash
-# Unit tests only (no browser required)
+# Unit tests (no browser, no network)
 pytest -m unit
 
-# All tests (requires live network)
-pytest -m "unit or integration"
+# RA integration tests (network, no browser)
+pytest tests/test_ra.py -m integration
+
+# Full integration (browser + network)
+pytest tests/test_luma.py tests/test_event.py -m integration
 ```
 
 ---
 
 ## Migrating to PostgreSQL
 
-The database layer uses SQLAlchemy async. To switch, change one line in `core/database.py`:
+Change one line in `core/database.py`:
 
 ```python
 # SQLite (current)
@@ -208,4 +208,4 @@ url = f"sqlite+aiosqlite:///{db_path}"
 url = "postgresql+asyncpg://user:password@localhost/dbname"
 ```
 
-Install `asyncpg` instead of `aiosqlite` and the rest of the code is unchanged.
+Install `asyncpg` instead of `aiosqlite` — everything else stays the same.
