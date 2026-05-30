@@ -46,7 +46,9 @@ class RausgegangenScraper(BaseScraper):
                 price=self._sd_price(sd),
                 is_free=self._sd_is_free(sd),
                 image_url=self._sd_image(sd),
-                organizer=await self._get_organizer(),
+                organizer=await self._get_organizer(
+                    fallback=self._sd_venue(sd).name if self._sd_venue(sd) else None
+                ),
             )
 
             await self.callback.on_complete(event)
@@ -177,9 +179,17 @@ class RausgegangenScraper(BaseScraper):
         addr = loc.get("address") or {}
         name = loc.get("name")
         street = addr.get("streetAddress") if isinstance(addr, dict) else None
+        postal = addr.get("postalCode") if isinstance(addr, dict) else None
         city = addr.get("addressLocality") if isinstance(addr, dict) else None
-        if name or street:
-            return Venue(name=name, address=street, city=city)
+        # Build full address: "Kleinhesselohe 3, 80802 München"
+        if street and postal and city:
+            full_address = f"{street}, {postal} {city}"
+        elif street and city:
+            full_address = f"{street}, {city}"
+        else:
+            full_address = street or None
+        if name or full_address:
+            return Venue(name=name, address=full_address, city=city)
         return None
 
     def _sd_price(self, sd: Optional[Dict]) -> Optional[str]:
@@ -265,13 +275,8 @@ class RausgegangenScraper(BaseScraper):
         except Exception:
             return []
 
-    async def _get_organizer(self) -> Optional[str]:
-        for sel in (
-            "a[href*='/organizers/']",
-            "a[href*='/organizations/']",
-            ".event-detail-sidebar a[href*='/organizer']",
-        ):
-            text = await self.safe_extract_text(sel)
-            if text:
-                return text
-        return None
+    async def _get_organizer(self, fallback: Optional[str] = None) -> Optional[str]:
+        # rausgegangen.de has no organizer in ld+json and DOM links point to
+        # rausgegangen's own brand pages, not the event organizer.
+        # The venue name is the reliable source.
+        return fallback
