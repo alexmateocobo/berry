@@ -198,6 +198,28 @@ pytest tests/test_luma.py tests/test_event.py -m integration
 
 ---
 
+## Known Limitations
+
+### Coverage
+- **Supported sites are fixed** — only rausgegangen.de, Resident Advisor, and Luma. [Fever](https://feverup.com) is hard-blocked by their anti-bot system and cannot be scraped.
+- **Tested for Munich only** — listing URLs, RA area lookups, and city assertions all target Munich. Other cities require changing the listing URLs and verifying selectors still hold.
+- **RA listing window is 7 days ahead** — hardcoded in `ResidentAdvisorScraper.scrape_listing()`; extend the `timedelta` to query further into the future.
+
+### Data quality
+- **Organizer is a name string only** — no URL or profile link to the organizer's page.
+- **Price format is not normalised** — rausgegangen returns raw sidebar text (`27,00 to 51,00 €`), RA returns formatted decimal (`13.32 EUR`). No single format across sources.
+- **No cross-source deduplication** — the same real-world event appearing on both rausgegangen and RA will be stored as two separate rows.
+- **`spots_remaining` and `registration_required` are Luma-only** — rausgegangen and RA do not expose this information in a scrapeable form.
+
+### Performance
+- **Browser-based scrapers are sequential** — Luma and rausgegangen visit each event page one at a time in a single browser context. Parallelism would require multiple browser instances.
+- **No incremental scraping** — every run re-scrapes the full listing from the top. There is no mechanism to fetch only events added since the last run.
+
+### Storage
+- **Images are stored locally only** — the `images/` directory is gitignored. There is no cloud storage or CDN integration; images must be managed manually when deploying.
+
+---
+
 ## Migrating to PostgreSQL
 
 Change one line in `core/database.py`:
