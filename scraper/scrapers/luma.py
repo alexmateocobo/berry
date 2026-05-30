@@ -26,6 +26,7 @@ class LumaScraper(BaseScraper):
             if sd is None:
                 raise PageNotFoundError(f"No Event ld+json found on {url}")
 
+            spots, reg_required = await self._get_spots_and_registration()
             event = Event(
                 url=url,
                 source="luma",
@@ -40,6 +41,8 @@ class LumaScraper(BaseScraper):
                 tags=await self._get_tags(),
                 price=self._sd_price(sd),
                 is_free=self._sd_is_free(sd),
+                spots_remaining=spots,
+                registration_required=reg_required,
                 image_url=self._sd_image(sd),
                 organizer=await self._get_organizer(),
             )
@@ -167,6 +170,28 @@ class LumaScraper(BaseScraper):
         except Exception as e:
             logger.debug("Could not get address from DOM: %s", e)
         return None
+
+    async def _get_spots_and_registration(self) -> tuple:
+        """Returns (spots_remaining: Optional[int], registration_required: Optional[bool])."""
+        try:
+            result = await self.page.evaluate("""
+                () => {
+                    const spotsEl = [...document.querySelectorAll('*')]
+                        .find(el => el.children.length === 0 && /\\d+ Spots? Remaining/i.test(el.innerText));
+                    const spotsMatch = spotsEl?.innerText?.match(/(\\d+)/);
+                    const spots = spotsMatch ? parseInt(spotsMatch[1], 10) : null;
+
+                    const approvalEl = [...document.querySelectorAll('*')]
+                        .find(el => el.children.length === 0 && /Approval Required/i.test(el.innerText?.trim()));
+                    const registrationRequired = !!approvalEl;
+
+                    return { spots, registrationRequired };
+                }
+            """)
+            return result["spots"], result["registrationRequired"] or None
+        except Exception as e:
+            logger.debug("Could not get spots/registration: %s", e)
+        return None, None
 
     async def _get_tags(self) -> List[str]:
         """Tags/categories are rendered as [class*='category'] pill elements."""

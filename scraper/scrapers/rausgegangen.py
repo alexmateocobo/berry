@@ -43,7 +43,7 @@ class RausgegangenScraper(BaseScraper):
                 venue=self._sd_venue(sd),
                 categories=await self._get_categories(),
                 tags=await self._get_tags(),
-                price=self._sd_price(sd),
+                price=self._sd_price(sd) or await self._get_price_from_sidebar(),
                 is_free=self._sd_is_free(sd),
                 image_url=self._sd_image(sd),
                 organizer=await self._get_organizer(
@@ -198,17 +198,32 @@ class RausgegangenScraper(BaseScraper):
         offers = sd.get("offers")
         if not isinstance(offers, dict):
             return None
-        price = offers.get("price")
         currency = offers.get("priceCurrency", "EUR")
-        if price is None:
-            return None
-        try:
-            amount = float(price)
-            if amount == 0:
-                return "Free"
-            return f"{amount:.2f} {currency}"
-        except (ValueError, TypeError):
-            return str(price)
+        offer_type = offers.get("@type", "")
+
+        if offer_type == "AggregateOffer":
+            low = offers.get("lowPrice")
+            high = offers.get("highPrice")
+            if low is None or high is None:
+                return None  # fall back to sidebar DOM
+            try:
+                low_f, high_f = float(low), float(high)
+                if low_f == 0 and high_f == 0:
+                    return "Free"
+                if low_f == high_f:
+                    return f"{low_f:.2f} {currency}"
+                return f"{low_f:.2f} – {high_f:.2f} {currency}"
+            except (ValueError, TypeError):
+                return None
+        else:
+            price = offers.get("price")
+            if price is None:
+                return None
+            try:
+                amount = float(price)
+                return "Free" if amount == 0 else f"{amount:.2f} {currency}"
+            except (ValueError, TypeError):
+                return str(price)
 
     def _sd_is_free(self, sd: Optional[Dict]) -> Optional[bool]:
         if not sd:
@@ -274,6 +289,25 @@ class RausgegangenScraper(BaseScraper):
             return list(dict.fromkeys(tags))
         except Exception:
             return []
+
+    async def _get_price_from_sidebar(self) -> Optional[str]:
+        """
+        Fallback for when ld+json has null AggregateOffer prices.
+        The sidebar text is: … / € / <price line> / Price information / …
+        """
+        try:
+            text = await self.safe_extract_text(".event-detail-sidebar")
+            if not text:
+                return None
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
+            for i, line in enumerate(lines):
+                if line == "€" and i + 1 < len(lines):
+                    price_line = lines[i + 1]
+                    if price_line and not price_line.lower().startswith("price"):
+                        return price_line
+        except Exception as e:
+            logger.debug("Sidebar price failed: %s", e)
+        return None
 
     async def _get_organizer(self, fallback: Optional[str] = None) -> Optional[str]:
         # rausgegangen.de has no organizer in ld+json and DOM links point to

@@ -32,14 +32,16 @@ Use `get_scraper(url, page=page)` to dispatch automatically by URL.
 ## Entity: Event
 
 Fields: `title`, `description`, `start_date`, `end_date`, `start_time`, `end_time`,
-`venue` (Venue sub-model), `categories`, `tags`, `price`, `is_free`, `image_url`,
-`organizer`, `source`, `url`.
+`venue` (Venue sub-model), `categories`, `tags`, `price`, `is_free`,
+`spots_remaining`, `registration_required`, `image_url`, `organizer`, `source`, `url`.
 
 ## Scraper notes
 
 ### rausgegangen.de
 - Selectors in [scraper/scrapers/rausgegangen.py](scraper/scrapers/rausgegangen.py)
 - Primary: ld+json structured data. DOM fallback for categories and tags (`a.text-pill-outline`)
+- Price: handles both `Offer` (single price) and `AggregateOffer` (price range) ld+json types.
+  Falls back to `.event-detail-sidebar` DOM when ld+json prices are null (external ticketing systems)
 - Update selectors when the site changes; prefer `[class*='...']` partial matches
 
 ### Resident Advisor
@@ -52,7 +54,8 @@ Fields: `title`, `description`, `start_date`, `end_date`, `start_time`, `end_tim
 - Listing page has an ItemList ld+json — used only to collect event URLs
 - Each individual event page has a full Event ld+json (description, dates, image, price)
 - DOM scraping supplements ld+json for: venue address (`.content-card` Location section),
-  tags (`[class*="category"]`), organizer ("Hosted By" section — skips "Presented by")
+  tags (`[class*="category"]`), organizer ("Hosted By" section — skips "Presented by"),
+  `spots_remaining` (text "N Spots Remaining"), `registration_required` (text "Approval Required")
 
 ## Architecture
 

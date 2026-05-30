@@ -28,6 +28,8 @@ class Event(BaseModel):
     tags: List[str] = Field(default_factory=list)
     price: Optional[str] = None
     is_free: Optional[bool] = None
+    spots_remaining: Optional[int] = None
+    registration_required: Optional[bool] = None
     image_url: Optional[str] = None
     organizer: Optional[str] = None
     source: Optional[str] = None  # "rausgegangen", "luma", "ra"

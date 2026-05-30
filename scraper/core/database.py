@@ -39,6 +39,8 @@ class EventRow(Base):
     tags: Mapped[Optional[str]] = mapped_column(Text)        # JSON array
     price: Mapped[Optional[str]] = mapped_column(Text)
     is_free: Mapped[Optional[bool]] = mapped_column(Boolean)
+    spots_remaining: Mapped[Optional[int]] = mapped_column(Integer)
+    registration_required: Mapped[Optional[bool]] = mapped_column(Boolean)
     image_url: Mapped[Optional[str]] = mapped_column(Text)
     image_path: Mapped[Optional[str]] = mapped_column(Text)  # set after download
     organizer: Mapped[Optional[str]] = mapped_column(Text)
@@ -96,10 +98,12 @@ async def save_event(event: Event, image_path: Optional[str] = None) -> bool:
                 venue_name=event.venue.name if event.venue else None,
                 venue_address=event.venue.address if event.venue else None,
                 venue_city=event.venue.city if event.venue else None,
-                categories=json.dumps(event.categories),
-                tags=json.dumps(event.tags),
+                categories=json.dumps(event.categories, ensure_ascii=False),
+                tags=json.dumps(event.tags, ensure_ascii=False),
                 price=event.price,
                 is_free=event.is_free,
+                spots_remaining=event.spots_remaining,
+                registration_required=event.registration_required,
                 image_url=event.image_url,
                 image_path=image_path,
                 organizer=event.organizer,

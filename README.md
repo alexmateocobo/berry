@@ -170,8 +170,10 @@ Single `events` table, flat layout:
 | `venue_city` | TEXT | |
 | `categories` | TEXT | JSON array |
 | `tags` | TEXT | JSON array |
-| `price` | TEXT | e.g. `13.32 EUR` or `Free` |
+| `price` | TEXT | e.g. `13.32 EUR`, `Free`, `27,00 to 51,00 €` |
 | `is_free` | INTEGER | 0/1 |
+| `spots_remaining` | INTEGER | Luma only — null if unlimited/unknown |
+| `registration_required` | INTEGER | Luma only — 1 if host approval needed |
 | `image_url` | TEXT | Remote URL |
 | `image_path` | TEXT | `images/<slug>.ext` |
 | `organizer` | TEXT | |
