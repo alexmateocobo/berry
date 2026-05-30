@@ -23,16 +23,19 @@ _HEADERS = {
     "Origin": "https://ra.co",
 }
 
+_EVENT_FIELDS = """
+    id title date startTime endTime contentUrl cost content
+    images { filename }
+    venue { name address country { name } }
+    artists { name }
+    promoters { name contentUrl }
+"""
+
 _LISTINGS_QUERY = """
 query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $pageSize: Int, $page: Int) {
   eventListings(filters: $filters, pageSize: $pageSize, page: $page) {
     data {
-      event {
-        id title date startTime endTime contentUrl cost
-        images { filename }
-        venue { name address country { name } }
-        artists { name }
-      }
+      event {""" + _EVENT_FIELDS + """}
     }
     totalResults
   }
@@ -41,12 +44,7 @@ query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $pageSize: Int, $page: I
 
 _EVENT_QUERY = """
 query GET_EVENT($id: ID!) {
-  event(id: $id) {
-    id title date startTime endTime contentUrl cost
-    images { filename }
-    venue { name address country { name } }
-    artists { name }
-  }
+  event(id: $id) {""" + _EVENT_FIELDS + """}
 }
 """
 
@@ -220,10 +218,15 @@ class ResidentAdvisorScraper:
         elif cost == "" or cost is None:
             is_free = None
 
+        # Organizer: first promoter name
+        promoters = raw.get("promoters") or []
+        organizer = promoters[0]["name"] if promoters and promoters[0].get("name") else None
+
         return Event(
             url=url,
             source="ra",
             title=raw.get("title"),
+            description=raw.get("content") or None,
             start_date=self._parse_date(raw.get("date") or raw.get("startTime")),
             end_date=self._parse_date(raw.get("endTime")),
             start_time=self._parse_time(raw.get("startTime")),
@@ -233,6 +236,7 @@ class ResidentAdvisorScraper:
             price=price,
             is_free=is_free,
             image_url=image_url,
+            organizer=organizer,
         )
 
     def _parse_date(self, raw: Optional[str]) -> Optional[str]:
