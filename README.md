@@ -134,6 +134,8 @@ berry/
 │   ├── test_factory.py
 │   ├── test_auth.py
 │   └── test_browser.py
+├── docs/
+│   └── 20260707_Berry_Pitch_Deck_v2.pdf  # Pitch deck
 ├── .env.example
 ├── pyproject.toml
 └── requirements.txt

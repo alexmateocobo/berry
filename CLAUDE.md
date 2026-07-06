@@ -74,6 +74,10 @@ R2 config (hardcoded in `r2.py`):
   `spots_remaining` (text "N Spots Remaining"), `registration_required` (text "Approval Required")
 - City: `addressLocality` from ld+json (DOM address card gives region names, not city)
 
+## Docs
+
+- `docs/20260707_Berry_Pitch_Deck_v2.pdf` — pitch deck
+
 ## Architecture
 
 - All extraction methods return `None`/`[]` on failure — never raise
