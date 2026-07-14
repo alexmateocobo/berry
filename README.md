@@ -2,6 +2,12 @@
 
 Async multi-site event scraper for Munich. Scrapes [rausgegangen.de](https://rausgegangen.de/en/muenchen/), [Resident Advisor](https://ra.co/events/de/munich), and [Luma](https://lu.ma/munich) — downloads images to Cloudflare R2 and persists everything to a local SQLite database.
 
+## Pitch Deck
+
+[![Berry pitch deck cover](docs/slides/cover.png)](docs/20260707_Berry_Pitch_Deck.pdf)
+
+*Click the image to view the full deck ([PDF](docs/20260707_Berry_Pitch_Deck.pdf)).*
+
 ## Supported sites
 
 | Site | Method | Notes |
@@ -135,7 +141,9 @@ berry/
 │   ├── test_auth.py
 │   └── test_browser.py
 ├── docs/
-│   └── 20260707_Berry_Pitch_Deck_v2.pdf  # Pitch deck
+│   ├── 20260707_Berry_Pitch_Deck.pdf  # Pitch deck
+│   └── slides/
+│       └── cover.png                 # Deck cover, rendered for README
 ├── .env.example
 ├── pyproject.toml
 └── requirements.txt

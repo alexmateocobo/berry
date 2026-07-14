@@ -76,7 +76,7 @@ R2 config (hardcoded in `r2.py`):
 
 ## Docs
 
-- `docs/20260707_Berry_Pitch_Deck_v2.pdf` — pitch deck
+- `docs/20260707_Berry_Pitch_Deck.pdf` — pitch deck (`docs/slides/cover.png` is the rendered cover shown in the README)
 
 ## Architecture
 
