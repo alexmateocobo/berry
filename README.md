@@ -1,6 +1,6 @@
 # berry
 
-Async multi-site event scraper for Munich. Scrapes [rausgegangen.de](https://rausgegangen.de/en/muenchen/), [Resident Advisor](https://ra.co/events/de/munich), and [Luma](https://lu.ma/munich) — downloads images to Cloudflare R2 and persists everything to a local SQLite database.
+Berry is a swipe-based event discovery app for Munich, paired with the async scraper that feeds it. The scraper pulls events from [rausgegangen.de](https://rausgegangen.de/en/muenchen/), [Resident Advisor](https://ra.co/events/de/munich), and [Luma](https://lu.ma/munich) — downloading images to Cloudflare R2 and persisting everything to SQLite — and the [mobile app](mobile/) (React Native / Expo) lets users swipe through those events, match with friends, and plan nights out together.
 
 ## Pitch Deck
 

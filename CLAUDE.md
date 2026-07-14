@@ -1,7 +1,9 @@
-# CLAUDE.md — Munich Events Scraper
+# CLAUDE.md — Berry (Munich Event Discovery App + Scraper)
 
-Multi-site async event scraper for Munich. Targets rausgegangen.de, Resident Advisor, and Luma.
-Images are stored on Cloudflare R2; data persists in SQLite.
+Swipe-based event discovery app for Munich, plus the multi-site async scraper that feeds it.
+The scraper targets rausgegangen.de, Resident Advisor, and Luma; images are stored on
+Cloudflare R2 and data persists in SQLite. The mobile app (`mobile/`, React Native / Expo)
+lets users swipe through events, match with friends, and plan nights out together.
 
 ## Quick start
 
